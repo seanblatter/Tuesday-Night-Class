@@ -3,29 +3,199 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Music Web App</title>
+  <title>Lettuce X Trees Dashboard</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js" integrity="sha384-LSsG9H4cxXBErKeIp1eciVBJRLLbC3eLIE2pp8KXgd3ym/DGkhptJKOorW5F63b0" crossorigin="anonymous"></script>
+  <script defer src="dashboard.js"></script>
 </head>
 <body>
-  <header>
-    <h1>My Music Player</h1>
-    <input type="text" placeholder="Search songs..." id="search-bar">
+  <noscript class="noscript-banner">This dashboard requires JavaScript to fetch on-chain activity. Please enable JavaScript and reload the page.</noscript>
+  <header class="top-bar">
+    <div class="branding">
+      <h1>Lettuce X Trees Dashboard</h1>
+      <p class="subtitle">Transparent tracking for every Parking to Plant session</p>
+    </div>
+    <div class="header-actions">
+      <div id="connection-status" class="status-badge status-disconnected">Wallet disconnected</div>
+      <button id="connect-wallet" class="primary-button" type="button">Connect Wallet</button>
+    </div>
   </header>
   <main>
-    <section id="playlist">
-      <h2>Playlist</h2>
-      <ul>
-        <li>Rockstar - Post Malone</li>
-        <li>Rockstar - Roddy Rich</li>
-        <li>Sample Song 3</li>
+    <section class="card" id="configuration-card">
+      <div class="card-header">
+        <h2>Contract Setup</h2>
+        <button id="refresh-dashboard" class="ghost-button" type="button">Refresh</button>
+      </div>
+      <p class="card-description">Provide the Lettuce X Trees contract details to load live donation activity for LettucePark and Trees.org.</p>
+      <form id="config-form" class="form-grid" autocomplete="off">
+        <label class="form-field">
+          <span>Contract Address</span>
+          <input id="contract-address" type="text" placeholder="0x..." required>
+        </label>
+        <label class="form-field">
+          <span>RPC Endpoint (optional)</span>
+          <input id="rpc-url" type="url" placeholder="https://rpc.example.org">
+        </label>
+        <label class="form-field">
+          <span>Start Block (optional)</span>
+          <input id="start-block" type="number" min="0" step="1" placeholder="0">
+        </label>
+        <label class="form-field">
+          <span>Stablecoin Decimals Override (optional)</span>
+          <input id="stablecoin-decimals" type="number" min="0" max="36" step="1" placeholder="6">
+        </label>
+        <div class="form-actions">
+          <button id="load-dashboard" class="primary-button" type="submit">Load Dashboard</button>
+          <button class="ghost-button" type="reset">Reset</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="metrics-grid" aria-label="Key metrics">
+      <article class="metric-card">
+        <span class="metric-label">Total Sessions</span>
+        <span class="metric-value" id="metric-total-sessions">—</span>
+      </article>
+      <article class="metric-card">
+        <span class="metric-label">Total Trees Planted</span>
+        <span class="metric-value" id="metric-total-trees">—</span>
+      </article>
+      <article class="metric-card">
+        <span class="metric-label">Verified Sessions</span>
+        <span class="metric-value" id="metric-verified-sessions">—</span>
+        <span class="metric-footnote" id="metric-verified-rate"></span>
+      </article>
+      <article class="metric-card">
+        <span class="metric-label">Donation per Tree</span>
+        <span class="metric-value" id="metric-donation">—</span>
+      </article>
+    </section>
+
+    <section class="metrics-grid" aria-label="Financial metrics" id="financial-grid">
+      <article class="metric-card">
+        <span class="metric-label">Outstanding Donation</span>
+        <span class="metric-value" id="metric-owed">—</span>
+      </article>
+      <article class="metric-card">
+        <span class="metric-label">Payout Threshold</span>
+        <span class="metric-value" id="metric-payout-threshold">—</span>
+      </article>
+      <article class="metric-card">
+        <span class="metric-label">Contract Stablecoin Balance</span>
+        <span class="metric-value" id="metric-contract-balance">—</span>
+      </article>
+    </section>
+
+    <section class="card" id="organization-card">
+      <h2>Program Addresses</h2>
+      <div class="detail-row">
+        <span class="detail-label">Lettuce X Trees Contract</span>
+        <span class="detail-value mono" id="contract-address-display">—</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Trees.org Recipient</span>
+        <span class="detail-value mono" id="trees-org-address">—</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Stablecoin</span>
+        <span class="detail-value">
+          <span id="stablecoin-symbol">—</span>
+          <span class="detail-subtle">(<span class="mono" id="stablecoin-address">—</span>)</span>
+        </span>
+      </div>
+    </section>
+
+    <section class="card" id="session-activity">
+      <div class="card-header">
+        <h2>Session Activity</h2>
+        <span id="verification-summary" class="detail-chip">No sessions loaded yet</span>
+      </div>
+      <div class="table-container">
+        <table id="sessions-table">
+          <thead>
+            <tr>
+              <th scope="col">Session ID</th>
+              <th scope="col">Type</th>
+              <th scope="col">Trees</th>
+              <th scope="col">Donation</th>
+              <th scope="col">Payer</th>
+              <th scope="col">Recorded</th>
+              <th scope="col">Status</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div id="sessions-empty" class="empty-state">No session records were found for the selected range.</div>
+      </div>
+    </section>
+
+    <section class="card" id="actions-card">
+      <h2>On-Chain Actions</h2>
+      <div class="grid-two">
+        <div class="action-panel">
+          <h3>Record Parking Sessions</h3>
+          <p class="form-help">For authorized LettucePark recorders. Each entry emits an immutable ledger event.</p>
+          <form id="record-hourly-form" class="stacked-form">
+            <h4>Hourly Session</h4>
+            <label>
+              <span>Stripe Session ID</span>
+              <input type="text" id="hourly-session-id" placeholder="sess_..." required>
+            </label>
+            <label>
+              <span>Payer Address</span>
+              <input type="text" id="hourly-payer" placeholder="0x..." required>
+            </label>
+            <button type="submit" class="primary-button">Record Hourly Session</button>
+          </form>
+          <form id="record-monthly-form" class="stacked-form">
+            <h4>Monthly Session</h4>
+            <label>
+              <span>Stripe Session ID</span>
+              <input type="text" id="monthly-session-id" placeholder="sess_..." required>
+            </label>
+            <label>
+              <span>Payer Address</span>
+              <input type="text" id="monthly-payer" placeholder="0x..." required>
+            </label>
+            <label>
+              <span>Days Parked</span>
+              <input type="number" id="monthly-days" min="1" max="31" required>
+            </label>
+            <button type="submit" class="primary-button">Record Monthly Session</button>
+          </form>
+        </div>
+        <div class="action-panel">
+          <h3>Trees.org &amp; Funding</h3>
+          <form id="verify-session-form" class="stacked-form">
+            <h4>Verify Session</h4>
+            <label>
+              <span>Stripe Session ID</span>
+              <input type="text" id="verify-session-id" placeholder="sess_..." required>
+            </label>
+            <button type="submit" class="primary-button">Confirm Verification</button>
+          </form>
+          <form id="deposit-form" class="stacked-form">
+            <h4>Deposit Stablecoin</h4>
+            <label>
+              <span>Amount (<span id="deposit-token-symbol">TOKEN</span>)</span>
+              <input type="number" id="deposit-amount" min="0" step="0.000001" placeholder="1000" required>
+            </label>
+            <button type="submit" class="primary-button">Deposit &amp; Stage Payout</button>
+            <p class="form-help">Deposits require an approved allowance from the connected wallet.</p>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" id="funding-events">
+      <div class="card-header">
+        <h2>Funding Events</h2>
+      </div>
+      <ul id="funding-feed" class="event-feed">
+        <li class="empty-state">Funding deposits and payouts will appear here.</li>
       </ul>
     </section>
-    <section id="player">
-      <audio controls>
-        <source src="sample.mp3" type="audio/mpeg">
-        Your browser does not support the audio element.
-      </audio>
-    </section>
   </main>
+  <div id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>
