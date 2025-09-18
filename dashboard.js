@@ -52,21 +52,16 @@
   document.addEventListener('DOMContentLoaded', init);
 
   function init() {
-    if (!ethers) {
-      console.error('Ethers.js was not loaded.');
-      const status = document.getElementById('connection-status');
-      if (status) {
-        status.textContent = 'Ethers.js failed to load';
-        status.classList.remove('status-connected');
-        status.classList.add('status-disconnected');
-      }
-      return;
-    }
-
     cacheDomReferences();
     loadStoredConfig();
     updateConfigForm();
     updateContractAddressDisplay();
+
+    if (!ethers) {
+      handleMissingEthers();
+      return;
+    }
+
     attachEventListeners();
 
     if (state.config.contractAddress) {
@@ -74,6 +69,31 @@
         console.warn('Auto-load skipped:', error);
       });
     }
+  }
+
+  function handleMissingEthers() {
+    console.error('Ethers.js was not loaded.');
+
+    if (elements.connectionStatus) {
+      elements.connectionStatus.textContent = 'Ethers.js failed to load';
+      elements.connectionStatus.classList.remove('status-connected');
+      elements.connectionStatus.classList.add('status-disconnected');
+    }
+
+    if (elements.connectWalletButton) {
+      elements.connectWalletButton.disabled = true;
+      elements.connectWalletButton.textContent = 'Wallet unavailable';
+    }
+
+    if (elements.loadButton) {
+      elements.loadButton.disabled = true;
+    }
+
+    if (elements.refreshButton) {
+      elements.refreshButton.disabled = true;
+    }
+
+    showToast('Ethers.js failed to load. Check your connection and refresh the page.', 'error');
   }
 
   function cacheDomReferences() {
@@ -164,6 +184,11 @@
     }
   }
   async function connectWallet() {
+    if (!ethers) {
+      handleMissingEthers();
+      return;
+    }
+
     if (!window.ethereum) {
       showToast('No Ethereum wallet found. Install MetaMask or provide an RPC endpoint.', 'error');
       return;
@@ -234,6 +259,13 @@
   async function configureDashboard(event, options = {}) {
     event?.preventDefault();
     const { silent = false } = options;
+
+    if (!ethers) {
+      if (!silent) {
+        showToast('Dashboard tools are unavailable until Ethers.js loads. Refresh the page to retry.', 'error');
+      }
+      return Promise.reject(new Error('Ethers.js unavailable.'));
+    }
 
     const addressInput = elements.contractAddressInput?.value?.trim() ?? '';
     const rpcUrl = elements.rpcUrlInput?.value?.trim() ?? '';
